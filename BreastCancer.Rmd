@@ -1,0 +1,260 @@
+---
+title: "What factors affect breast cancer survival rate?"
+author: "Tina Trinh"
+output: html_document
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+---
+
+
+# Introduction 
+
+Breast cancer is a significant public health issue that affects millions of people worldwide. According to the World Health Organization (WHO), breast cancer is the most common cancer among women globally, accounting for approximately 25% of all cancer cases in women.
+
+In the United States, breast cancer is also the most common cancer diagnosed in women, after skin cancer. It is estimated that in 2021, around 284,200 new cases of invasive breast cancer will be diagnosed in women, along with 49,290 new cases of non-invasive breast cancer. Breast cancer also affects men, with an estimated 2,650 new cases of invasive breast cancer expected to be diagnosed in men in 2021.
+
+Although breast cancer rates have been increasing globally over the past few decades, improvements in screening and treatment have led to a decrease in breast cancer mortality rates in many countries. However, breast cancer still remains a significant cause of death among women worldwide, with an estimated 685,000 deaths from breast cancer in 2020.
+
+Breast cancer is a complex disease with many different subtypes and risk factors. To better understand this disease, researchers and healthcare professionals rely on data to identify patterns, trends, and potential treatments. One such source of data is the breast cancer data set available on Kaggle, which includes information on over 334 breast cancer patients with 15 variables that are related to the patients such as thei age, gender, type of proteins on the gene (protein 1, 2, 3, and 4), tumor stage, histology, estrogen receptor status (ER status), progesterone status (PR status), Human Epidermal growth factor Receptor 2 status (HER2 status), surgery type, data of surgery, date of last visit, and patient status.
+
+By analyzing this data set, researchers can gain insights into the factors that contribute to breast cancer incidence and mortality, as well as potential treatment approaches. Moreover, this data set can be used to develop predictive models to identify patients who may be at higher risk for breast cancer recurrence or mortality.
+
+
+
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(mosaic)
+library(rpart)
+library(randomForest)
+library(ggsci)
+library(ggplot2)
+library(dplyr)
+library(gridExtra)
+library(scales)
+library(rattle)
+library(tidyr)
+install.packages("ggnewscale", repos = "https://cran.r-project.org")
+library(ggnewscale)
+```
+
+
+This dataset is taken from Kaggle. There are initially 334 rows and 15 variables, which are: age, gender, protein 1, protein 2, protein 3, protein 4, tumour stage, histology, ER status, PR status, HER2 status, surgery type, date of surgery, date of last visit, and patient status. Among the variables listed above, there are 5 numerical variables, which are age, protein1, protein2, protein3, protein4, and tumour stage, the rest of the variables are categorical variables. 
+
+
+```{r, echo = FALSE}
+breastcancer <- read.csv("breast_cancer_survival.csv")
+glimpse(breastcancer)
+```
+
+I'm interested in what factors that affect the patient survival rate, in this case, what factors that influence the patient status the most, therefore, my response variable would be patient status, and the explanatory variables are the rest of the variables.
+
+> Questions 
+
+* In this report, I'd like to answer some of the following questions based on this dataset:
+  1. How old are the patients when diagnosing with breast cancer?
+  2. What is the ratio between female vs. male when having breast cancer?
+  3. Type of protein contribute the most to breast cancer
+  4. Which tumor stages do patients have the highest chance of surviving from breast cancer? 
+  5. Overall, what is the percentage of the patients who are survived from breast cancer? 
+  6. Do types of surgery affect the survival rate of patients?
+  7. What are the most important factors that affect patient survival rate? 
+
+
+
+# EDA and Model Interpretation
+
+* In order to analyze this data set easier, I would categorize the patients' age into age groups such as infant and toddlers, children, adolescents and teenagers, young adults, middle adge adults, older adults, and elderly: 
+  * Infant and toddlers: include newborn up to 2 years old
+  * Children: include individuals between the ages of 2 and 12 years old. 
+  * Adolescents: includes individuals between the ages of 13 and 19 years old. 
+  * Young adults: includes individuals between the ages of 20 to 40. 
+  * Middle age adults: those whose ages from 41 to 65. 
+  * Older adults contain patients who are 65 to 70. 
+  * Elderly: those whose age greater than 70. 
+
+I would create a categorical called 'Group_age' to categorize the age groups that I mentioned above. 
+```{r, echo=FALSE}
+breastcancer1 = breastcancer %>% 
+  mutate(Group_age = ifelse(Age <= 2, 'Infant',
+                         ifelse(Age <= 12, 'Children',
+                                ifelse(Age <= 19, 'Adolescents',
+                                       ifelse(Age <= 40, 'Young adults',
+                                              ifelse(Age <= 65, 'Middle Age',
+                                                     ifelse(Age <= 70, 'Older adults',
+                                                            'Elderly'))))))) 
+
+glimpse(breastcancer1)
+```
+
+
+To answer the first and second questions, I'd make 2 bar plots so I can compare the interested variables.
+
+```{r, echo=FALSE}
+
+ggplot(breastcancer1, aes(x = Group_age)) +
+  geom_bar(aes(fill = Group_age)) +
+  geom_text(stat = "count", aes(label = scales::percent((..count..)/sum(..count..), accuracy = 0.1)), vjust = -0.5) +
+  ggtitle("Figure 1: Age distribution of patients who have had breast cancer") +
+  xlab("Age group")
+
+ggplot(breastcancer1, aes(x = Gender)) + geom_bar() + 
+  geom_text(stat = "count", aes(label = scales::percent((..count..)/sum(..count..), accuracy = 0.1)), vjust = -0.5) +
+  labs(title = "Figure 2: Distribution of Breast Cancer by Gender",
+       x = "Gender",
+       y = "Count") 
+
+
+
+  
+
+```
+
+In general,  the group of middle age (patients who are 41 to 65 years old) have the highest percentage of being the breast cancer patients, then the elderly group (who are older than 70), then the older adults (who are 65 to 70 years old), then the young adults. Furthermore, the percentage of patients who have breast cancer are much higher for female than for male patient (98.8% versys 1.2%). The data suggests that the middle age women have the most likely chance of getting breast cancer, therefore, it is important to healthcare workers to be aware of the symptoms of breast cancer in these patients so they would have the  prevention treatment as soon as possible.
+
+
+Next, to answer the third question regarding about the type of protein that express the most in the patients' tumor, I'd use the boxplot so I can see the comparison between the types of protein and the gender. This way, I can decide whether the protein type has any association with the gender of the patient
+
+```{r, echo = FALSE}
+breastcancer2 = breastcancer1 %>% gather(key = "variable", value = "value", Protein1:Protein4) 
+
+ggplot(breastcancer2, aes(x = Gender, y = value, fill = variable)) +
+  geom_boxplot() +
+  labs(title = "Box plot of Proteins by Gender",
+       x = "Gender",
+       y = "Expression level",
+       fill = "Protein") +
+  facet_wrap(~ variable, scales = "free_y") +
+  ggtitle("Figure 3: Comparision between gender and expression \nlevel of different type of protein in tumor")
+```
+
+
+
+Male is generally have higher expression level of protein 1 than female. However, for other protein types, female tend to have higher median expression level than male, except for protein 3, which both female and male has similar median in expression level. The range of of the expression levels for female is much higher than for male. Female also have some low outliers for protein 1 and protein 4, but have some high outliers in protein 3. This suggests that for female breast cancer patient, protein 1 and 4 tend to have expression level than normal (expression level = 0), whereas protein 3 tends expression 'stronger' than normal. On the other hand, for male breast cancer patients, their expression level for protein 1 and protein 2 are higher than the normal value, but there is almost no difference in expression level in protein 3 and 4. 
+
+
+To answer the 4th question regarding the survival rate of the patient versus their tumour stage, I'd use bar plot with explanatory variable as the patient status (dead, alive, or unknown). I'd also use the facet_wrap() method to seperate each tumour stage of the patients.
+
+```{r, echo=FALSE}
+ggplot(breastcancer1, aes(x = Patient_Status, fill = Patient_Status)) + geom_bar()  +
+  geom_text(stat = "count", aes(label = scales::percent((..count..)/sum(..count..), accuracy = 0.1)), vjust = -0.5)+
+  facet_wrap(~as.factor(Tumour_Stage)) +
+  theme_gray() +
+  scale_fill_manual(values = c("lightpink", "brown", "gray"), labels = c("Unknown", "Alive", "Dead")) +
+  ggtitle("Figure 4: Distribution of percentage of patient status in each tumour stage") +
+  xlab("Patient status")
+```
+
+
+Patients who have tumor stage II have the highest chance of being alive, then in stage III, then stage I. Patients who are in tumor stage II also has the highest chance of being dead, then stage III, then stage I. The data also suggests that there are a lot of people who are alive than dead. 
+
+I'm also interested whether each tumour stage will have different type of surgery, therefore, I'd use bar plot to see the distribution of the surgery type with each tumor stage.
+
+```{r, echo=FALSE}
+ggplot(breastcancer2, aes(x = Surgery_type, fill = Surgery_type)) + geom_bar()  +
+  geom_text(stat = "count", aes(label = scales::percent((..count..)/sum(..count..), accuracy = 0.1)), vjust = -0.5)+
+  facet_wrap(~as.factor(Tumour_Stage)) + 
+   scale_fill_manual(values = c("#a17967", "#a16779", "#677aa1", "#79a167", "#FF8C00", "#67a197")) +
+  theme_bw()
+
+
+```
+
+In general, other type of surgery is the most common surgery type that is used to treat breast cancer. Modified radical mastectomy is also common in treating tumor of II and III stage. In stage I, lumpectomy is common in treating patients with breast cancer. Simple mastectomy is the third common in treating breast cancer in all 3 stages. 
+
+There are several categorical variables in this data set, and in order to use the random forest more effectively, I'd create new variables that serve as the numerical version of the particular variables that I am interested in.
+Since the Patient_Status variable is a categorical variable, therefore I'd create a new variable that is numerical that can indicate if patient is dead (0) or alive (1). I'd also assign the surgery type into numerical values where 0 is Lumpectomy, 1 is Modified Radical Mastectomy, 2 is Simple Mastectomy, and 3 is Other. For the ER status, PR status, and HER2 status 0 would be negative and 1 would be positive. For Histology, 1 would be Infiltrating Ductal Carcinoma, and 2 would be Mucinous Carcinoma. 
+
+
+
+```{r, echo=FALSE}
+# Create new variable numerical_status
+breastcancer_new <- breastcancer %>%
+  mutate(numerical_status = ifelse(Patient_Status == "Alive", 1, 0)) %>%
+  mutate(numerical_surgery = case_when(
+    Surgery_type == "Lumpectomy" ~ 0,
+    Surgery_type == "Modified Radical Mastectomy" ~ 1,
+    Surgery_type == "Simple Mastectomy" ~ 2,
+    Surgery_type == "Other" ~ 3)) %>% 
+  mutate(numerical_ER = ifelse(ER.status == "Positive", 1, 0)) %>%
+  mutate(numerical_PR = ifelse(PR.status == "Positive", 1, 0)) %>%
+  mutate(numerical_HER2 = ifelse(HER2.status == "Positive", 1, 0)) %>%
+  mutate(numerical_histology = ifelse(Histology == "Infiltrating Ductal Carcinoma", 1, 2))
+glimpse(breastcancer_new)
+```
+
+I'd split the data in train and test data in half (0.5 versus 0.5) to evaluate the performance of the model on unseen data. I'd then create the random forest model to get high accuracy in predicting the target variable. This random forest model is then used to predict which factors are the most important factors in affecting the survival status of the patient. 
+
+```{r, echo=FALSE}
+set.seed(1)
+test_id <- sample(1:nrow(breastcancer_new), size=round(0.5*nrow(breastcancer_new)))
+TEST <- breastcancer_new[test_id,]
+TRAIN <- breastcancer_new[-test_id,]
+
+# Random forest
+forest = randomForest(numerical_status ~ Age + Gender + Protein1 + Protein2 + Protein3 + Protein4 + Tumour_Stage +
+                         numerical_histology + numerical_ER + numerical_PR + numerical_HER2 + 
+                        numerical_surgery, data = breastcancer_new)
+forest
+
+# Important factors
+randomForest::importance(forest) %>% as.data.frame() %>% rownames_to_column() %>% arrange(desc(IncNodePurity))
+
+
+```
+In general, the expression level of protein 4 is the most important factor in affecting survival of the patient. Other proteins' expression level such as protein 2, 1, and 3 also some of the most significant levels in predicting the patient survival status. Furthermore, age is also an important factor, as well as the type of surgery, tumour stage, type of histology, HER2 status, and gender. 
+ 
+In order to represent a data visualiztion for decision making, I'd use decision tree. I'd also create the RMSE to represents the average absolute difference between the predicted values and the actual values of the decision tree model in this data set.
+
+```{r, echo=FALSE}
+# Decision tree
+
+tree <- rpart(numerical_status ~ Age + Gender + Protein1 + Protein2 + Protein3 + Protein4 + Tumour_Stage +
+                         numerical_histology + numerical_ER + numerical_PR + numerical_HER2 + 
+                        numerical_surgery, data = breastcancer_new, na.action = na.pass)
+fancyRpartPlot(tree)
+
+# RMSE for decision tree
+TEST= TEST %>% mutate(prediction_tree= predict(tree, newdata = TEST))
+tree_rmse = (mean(TEST$prediction_tree - TEST$numerical_status))^2
+
+
+```
+
+The decision suggests that if the patient does have expression level for protein 4 hat is greater than 1.1, they would have low chance of being alive. However, if they have protein 4 expression level that is not greater than 1.1, other kind of surgery (not Lumpectomy, Simple Mastectomy, or Modified Radical Mastectomy), protein 3 expression level less than 0.41, and histology type of Infiltrating Ductal Carcinoma, they would be most likely to be alive. If they have protein 2 expression level greater than 1.1, they would also be most likely to survive from breast cancer
+
+```{r, echo=FALSE}
+# linear model 
+model_new = lm(numerical_status ~ Age + Gender + Protein1 + Protein2 + Protein3 + Protein4 + Tumour_Stage +
+                         numerical_histology + numerical_ER + numerical_PR + numerical_HER2 + 
+                        numerical_surgery, data = breastcancer_new)
+summary(model_new)
+plot(model_new)
+
+
+# RMSE for linear model
+TEST= TEST %>% mutate(prediction_model= predict(model_new, newdata = TEST))
+linear_rmse = (mean(TEST$prediction_model - TEST$numerical_status))^2
+```
+
+
+If median of residuals is close to zero, it suggests that, on average, the model's predictions are reasonably accurate and unbiased. It indicates that the model is capturing the underlying relationships between the predictors and the response variable well. In this case, median of the residuals in the linear model is pretty close to 0, which suggests that model's predictions are reasonably accurate and unbiased. The asterisks in the Pr(>|t|) indicate the p-value of each variables. The intercepts of the linear models have p-value that is smaller than 0.01, and the type of surgery has the p-value that is smaller than 0.05. 
+
+
+```{r, echo=FALSE}
+#RMSE 
+tree_rmse
+linear_rmse
+```
+
+
+The tree RMSE is much smaller than the linear one (0.0001528921 < 0.0001951243), which indicates that the tree model is better in predicting the value that may contribute in survival rate in breast cancer patients.
+
+
+# Conclusion 
+
+Protein types seem to be the most significant factors that affec the survival rate of the patient, then age, type of surgery, tumor stage, histology, HER2, and lastly, gender. Based on the decision tree, if patient has expression level of protein 4 that is greater or equal than 1.1, their survival rate would likely be low. On the other hand, if their expression level for protein is less than 1.1, their survival rate would be higher, but that depends on several factors as well such as surgery type, other types of proteins expression levels, histology, etc. This can suggests that if the patients have abnormal high expression level for protein 4, they are most likely to have breast cancer, and their survival rate might be low as well. 
+
+This data set also empty values, such as the empty values in the Patient_status variable. The missing value might make the data bias, therefore, it is recommended that one should not completely trust this data set. This data set has a title "Breast Cancer Survival Dataset", which suggests that the data in this dataset is largely about the patients who survived from breast cancer, not other patients, which means this dataset is not really inclusive. 
+
+In the future, several factors should be taken into account as well such as inherit genes of the patients (is this cancer inherited? Is there any specific proteins that are inherited that significantly affect the patients' chance of getting breast cancer and chance of survive from the cancer?), patients' lifestyle (is there any specific food/diet that can enhance the patients' chance of getting cancer and chance of surviving from the cancer?). 
+
